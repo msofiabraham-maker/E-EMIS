@@ -876,16 +876,26 @@ async function handleRetrieveReport(event) {
   const zone = document.getElementById("userZoneSelect").value;
   const schoolId = document.getElementById("userSchoolSelect").value;
   const className = document.getElementById("userClassSelect").value;
-  const lin = document.getElementById("userLinInput").value.trim();
+  const rawLin = document.getElementById("userLinInput").value || '';
+  const lin = rawLin.replace(/\D/g, '').trim();
   const year = document.getElementById("userYearSelect").value;
   const termString = document.getElementById("userTermSelect").value;
 
-  if (!zone || !schoolId || !className || lin.length !== 16 || !year || !termString) {
+  if (!zone || !schoolId || !className || !year || !termString) {
     if (submitButton) {
       submitButton.disabled = false;
       submitButton.textContent = originalButtonText;
     }
-    showMessage("Complete Form", "Please fill in all progress search inputs.");
+    showMessage("Complete Form", "Please fill in all search fields before retrieving a report.");
+    return;
+  }
+
+  if (!/^\d{16}$/.test(lin)) {
+    if (submitButton) {
+      submitButton.disabled = false;
+      submitButton.textContent = originalButtonText;
+    }
+    showMessage("Invalid LIN", "Please enter a valid 16-digit learner identification number (digits only).");
     return;
   }
 
@@ -922,7 +932,10 @@ async function handleRetrieveReport(event) {
         year,
         term
       });
-      showMessage("No Results Found", "No matching record was found for this criteria.");
+      showMessage(
+        "No Results Found",
+        "We could not find a result card for the selected school, class, year, term, and LIN. Please verify your entries and try again."
+      );
       return;
     }
 

@@ -553,7 +553,7 @@ const EduTrackDB = {
 
     const normalizedZone = normalizeText(zoneName);
     const normalizedClassName = normalizeText(className);
-    const normalizedLin = normalizeText(lin);
+    const normalizedLin = normalizeText(lin).replace(/\D/g, '');
     const parsedYear = parseInt(year, 10);
     const validTerm = ensureValidTerm(term);
 
@@ -561,7 +561,7 @@ const EduTrackDB = {
       throw new Error('Invalid search parameters provided');
     }
 
-    console.debug('findReportCard: invoking fetch_report_card RPC', {
+    console.debug('findReportCard: search parameters', {
       zone_name: normalizedZone,
       school_id: schoolId,
       class_name: normalizedClassName,
@@ -570,43 +570,28 @@ const EduTrackDB = {
       term: validTerm
     });
 
-    try {
-      const { data, error } = await client.rpc('fetch_report_card', {
-        zone_name: normalizedZone,
-        school_id: schoolId,
-        class_name: normalizedClassName,
-        lin: normalizedLin,
-        year: parsedYear,
-        term: validTerm
-      });
+    // Use direct query path for maximum reliability and transparency
+    // RPC can fail with non-JSON responses and obscure errors; direct queries are safer
 
-      if (error) {
-        throw error;
-      }
-
-      if (data) {
-        return data;
-      }
-    } catch (rpcError) {
-      console.warn('findReportCard: fetch_report_card RPC failed; performing direct query fallback.', rpcError);
-      console.debug('findReportCard: RPC error details', {
-        message: rpcError?.message,
-        code: rpcError?.code,
-        details: rpcError?.details,
-        hint: rpcError?.hint,
-        status: rpcError?.status
-      });
-    }
-
-    const { data: learner, error: learnerError } = await client
+    const { data: learner, error: learnerError, count: learnerCount } = await client
       .from('learners')
-      .select('id, first_name, last_name, lin, school_id')
+      .select('id, first_name, last_name, lin, school_id', { count: 'exact' })
       .eq('lin', normalizedLin)
       .eq('is_deleted', false)
-      .single();
+      .maybeSingle();
 
-    if (learnerError || !learner) {
-      if (learnerError) throw learnerError;
+    console.debug('findReportCard: learner lookup', {
+      lin: normalizedLin,
+      schoolId,
+      found: !!learner,
+      learnerCount,
+      error: learnerError
+    });
+
+    if (learnerError) {
+      throw learnerError;
+    }
+    if (!learner) {
       return null;
     }
 
@@ -614,10 +599,18 @@ const EduTrackDB = {
       .from('schools')
       .select('id, name, zone_id')
       .eq('id', schoolId)
-      .single();
+      .maybeSingle();
 
-    if (schoolError || !school) {
-      if (schoolError) throw schoolError;
+    console.debug('findReportCard: school lookup', {
+      schoolId,
+      found: !!school,
+      error: schoolError
+    });
+
+    if (schoolError) {
+      throw schoolError;
+    }
+    if (!school) {
       return null;
     }
 
@@ -625,10 +618,19 @@ const EduTrackDB = {
       .from('zones')
       .select('name')
       .eq('id', school.zone_id)
-      .single();
+      .maybeSingle();
 
-    if (zoneError || !zone) {
-      if (zoneError) throw zoneError;
+    console.debug('findReportCard: zone lookup', {
+      zoneId: school.zone_id,
+      expectedZone: normalizedZone,
+      found: zone?.name,
+      error: zoneError
+    });
+
+    if (zoneError) {
+      throw zoneError;
+    }
+    if (!zone) {
       return null;
     }
 
@@ -640,18 +642,30 @@ const EduTrackDB = {
       return null;
     }
 
-    const { data: result, error: resultError } = await client
+    const { data: result, error: resultError, count: resultCount } = await client
       .from('results')
-      .select('id, class_name, year, term, summary_data, result_subjects(*)')
+      .select('id, class_name, year, term, summary_data, result_subjects(*)', { count: 'exact' })
       .eq('learner_id', learner.id)
       .eq('class_name', normalizedClassName)
       .eq('year', parsedYear)
       .eq('term', validTerm)
       .eq('is_deleted', false)
-      .single();
+      .maybeSingle();
 
-    if (resultError || !result) {
-      if (resultError) throw resultError;
+    console.debug('findReportCard: result lookup', {
+      learnerId: learner.id,
+      className: normalizedClassName,
+      year: parsedYear,
+      term: validTerm,
+      found: !!result,
+      resultCount,
+      error: resultError
+    });
+
+    if (resultError) {
+      throw resultError;
+    }
+    if (!result) {
       return null;
     }
 
