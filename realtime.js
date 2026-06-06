@@ -65,31 +65,58 @@ class RealtimeSync {
       return;
     }
 
-    const channel = this.supabaseClient
-      .channel(`${tableName}-all-changes`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: tableName },
-        (payload) => {
-          Config.debug(`Realtime update on ${tableName}:`, payload);
+    const channelName = `${tableName}-all-changes`;
+    const channel = this.supabaseClient.channel(channelName);
 
-          // Handle different event types
-          if (payload.eventType === 'INSERT') {
-            this.notifyListeners(`${tableName}_inserted`, payload.new);
-          } else if (payload.eventType === 'UPDATE') {
-            this.notifyListeners(`${tableName}_updated`, payload.new);
-          } else if (payload.eventType === 'DELETE') {
-            this.notifyListeners(`${tableName}_deleted`, payload.old);
-          }
+    channel.on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: tableName },
+      (payload) => {
+        const eventId = payload?.eventType || payload?.type || 'unknown';
+        const recordId = payload?.new?.id || payload?.old?.id || 'unknown';
 
-          // Generic callback
-          if (onChangeCallback) onChangeCallback(payload);
+        console.log(`Realtime payload received: table=${tableName}, event=${eventId}, record=${recordId}`, payload);
+        Config.debug(`Realtime update on ${tableName}:`, payload);
+
+        if (payload.eventType === 'INSERT') {
+          this.notifyListeners(`${tableName}_inserted`, payload.new);
+        } else if (payload.eventType === 'UPDATE') {
+          this.notifyListeners(`${tableName}_updated`, payload.new);
+        } else if (payload.eventType === 'DELETE') {
+          this.notifyListeners(`${tableName}_deleted`, payload.old);
         }
-      )
-      .subscribe();
 
+        if (onChangeCallback) onChangeCallback(payload);
+      }
+    );
+
+    channel.on('subscription_succeeded', () => {
+      console.log(`✓ Realtime channel joined successfully: ${channelName} (state=${channel.state || 'unknown'})`);
+    });
+
+    channel.on('subscription_error', (error) => {
+      console.error(`Realtime channel failed to join: ${channelName}`, error, { state: channel.state });
+    });
+
+    channel.on('open', () => {
+      console.log(`Realtime transport open for channel: ${channelName}`);
+    });
+
+    channel.on('close', () => {
+      console.warn(`Realtime transport closed for channel: ${channelName}`);
+    });
+
+    channel.on('error', (error) => {
+      console.error(`Realtime channel error for ${channelName}:`, error, { state: channel.state });
+    });
+
+    channel.subscribe();
     this.subscriptions[tableName] = channel;
-    console.log(`✓ Subscribed to realtime changes on table: ${tableName}`);
+    console.log(`✓ Subscribed to realtime changes on table: ${tableName} (channel=${channelName}, state=${channel.state || 'unknown'})`);
+
+    setTimeout(() => {
+      console.log(`Realtime channel state check: ${channelName} => ${channel.state || 'unknown'}`);
+    }, 2500);
   }
 
   /**

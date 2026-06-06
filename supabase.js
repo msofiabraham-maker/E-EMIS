@@ -557,9 +557,18 @@ const EduTrackDB = {
     const parsedYear = parseInt(year, 10);
     const validTerm = ensureValidTerm(term);
 
-    if (!normalizedZone || !schoolId || !normalizedClassName || !normalizedLin || !Number.isInteger(parsedYear)) {
+    if (!normalizedZone || !schoolId || !normalizedClassName || !normalizedLin || normalizedLin.length !== 16 || !Number.isInteger(parsedYear)) {
       throw new Error('Invalid search parameters provided');
     }
+
+    console.debug('findReportCard: invoking fetch_report_card RPC', {
+      zone_name: normalizedZone,
+      school_id: schoolId,
+      class_name: normalizedClassName,
+      lin: normalizedLin,
+      year: parsedYear,
+      term: validTerm
+    });
 
     try {
       const { data, error } = await client.rpc('fetch_report_card', {
@@ -579,10 +588,16 @@ const EduTrackDB = {
         return data;
       }
     } catch (rpcError) {
-      console.warn('fetch_report_card RPC failed; performing direct query fallback.', rpcError);
+      console.warn('findReportCard: fetch_report_card RPC failed; performing direct query fallback.', rpcError);
+      console.debug('findReportCard: RPC error details', {
+        message: rpcError?.message,
+        code: rpcError?.code,
+        details: rpcError?.details,
+        hint: rpcError?.hint,
+        status: rpcError?.status
+      });
     }
 
-    // Fallback path: direct table queries when RPC is unavailable or unauthorized.
     const { data: learner, error: learnerError } = await client
       .from('learners')
       .select('id, first_name, last_name, lin, school_id')
@@ -592,21 +607,6 @@ const EduTrackDB = {
 
     if (learnerError || !learner) {
       if (learnerError) throw learnerError;
-      return null;
-    }
-
-    const { data: result, error: resultError } = await client
-      .from('results')
-      .select('id, class_name, year, term, summary_data, total_mark, average_mark, grade, learner_id, result_subjects(*)')
-      .eq('learner_id', learner.id)
-      .eq('class_name', normalizedClassName)
-      .eq('year', parsedYear)
-      .eq('term', validTerm)
-      .eq('is_deleted', false)
-      .single();
-
-    if (resultError || !result) {
-      if (resultError) throw resultError;
       return null;
     }
 
@@ -629,6 +629,29 @@ const EduTrackDB = {
 
     if (zoneError || !zone) {
       if (zoneError) throw zoneError;
+      return null;
+    }
+
+    if (zone.name.toUpperCase() !== normalizedZone.toUpperCase()) {
+      console.warn('findReportCard: zone mismatch between selected school and chosen zone', {
+        selectedZone: normalizedZone,
+        schoolZone: zone.name
+      });
+      return null;
+    }
+
+    const { data: result, error: resultError } = await client
+      .from('results')
+      .select('id, class_name, year, term, summary_data, result_subjects(*)')
+      .eq('learner_id', learner.id)
+      .eq('class_name', normalizedClassName)
+      .eq('year', parsedYear)
+      .eq('term', validTerm)
+      .eq('is_deleted', false)
+      .single();
+
+    if (resultError || !result) {
+      if (resultError) throw resultError;
       return null;
     }
 

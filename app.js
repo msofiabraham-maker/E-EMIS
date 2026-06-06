@@ -7,7 +7,9 @@ const State = {
   allZones: [],
   selectedLearnerForNewResult: null,
   activeWizardStep: 1,
-  currentReportCardData: null
+  currentReportCardData: null,
+  realtimeListenersConfigured: false,
+  lastReportQuery: null
 };
 
 // Application Initialization
@@ -38,6 +40,7 @@ function initApplication() {
   setupKeyboardShortcut();
   populateYearDropdowns();
   loadZones();
+  setupRealtimeListeners();
 }
 
 /**
@@ -354,6 +357,8 @@ function logoutAdmin() {
   if (typeof Realtime !== 'undefined') {
     Realtime.cleanup();
   }
+  State.realtimeListenersConfigured = false;
+  State.lastReportQuery = null;
   
   // Reset forms
   document.getElementById("adminLoginForm").reset();
@@ -458,29 +463,66 @@ async function loadAllLearners() {
  */
 function setupRealtimeListeners() {
   if (typeof Realtime === 'undefined') return;
+  if (State.realtimeListenersConfigured) return;
 
   // Listen for learners table changes
   Realtime.addEventListener('learners_changed', () => {
+    console.log('Realtime event: learners_changed');
     if (State.activeAdmin && document.getElementById('learnersTab').classList.contains('active')) {
+      console.log('Realtime handler: reloading learner list.');
       loadAllLearners();
     }
   });
 
   // Listen for results table changes
   Realtime.addEventListener('results_changed', () => {
+    console.log('Realtime event: results_changed');
     if (State.activeAdmin && document.getElementById('addResultsTab').classList.contains('active')) {
-      // Refresh any open result data
+      console.log('Realtime handler: add results tab active, refreshing admin school list and learners.');
+      loadAdminSchools();
+      loadAllLearners();
     }
+    refreshVisibleReportCard('results');
+  });
+
+  // Listen for result subjects table changes
+  Realtime.addEventListener('result_subjects_changed', () => {
+    console.log('Realtime event: result_subjects_changed');
+    refreshVisibleReportCard('result_subjects');
   });
 
   // Listen for schools table changes
   Realtime.addEventListener('schools_changed', () => {
+    console.log('Realtime event: schools_changed');
     if (State.activeAdmin) {
       loadAdminSchools();
     }
+    loadZones();
   });
 
+  State.realtimeListenersConfigured = true;
   console.log('✓ Realtime listeners configured');
+}
+
+async function refreshVisibleReportCard(source) {
+  const resultsArea = document.getElementById('resultsRenderArea');
+  if (!resultsArea || resultsArea.style.display === 'none') return;
+  if (!State.lastReportQuery) return;
+
+  console.log(`Realtime refresh triggered by ${source}. Reloading visible report card from last query.`);
+
+  try {
+    const { zone, schoolId, className, lin, year, term } = State.lastReportQuery;
+    const reportCard = await EduTrackDB.findReportCard(zone, schoolId, className, lin, year, term);
+
+    if (reportCard) {
+      State.currentReportCardData = reportCard;
+      renderReportCardToUI(reportCard);
+      console.log('Realtime refresh: report card UI updated successfully.');
+    }
+  } catch (error) {
+    console.error('Realtime refresh error:', error);
+  }
 }
 
 function renderLearnersTable(list) {
@@ -868,6 +910,7 @@ async function handleRetrieveReport(event) {
       termString
     });
 
+    State.lastReportQuery = { zone, schoolId, className, lin, year, term };
     const reportCard = await EduTrackDB.findReportCard(zone, schoolId, className, lin, year, term);
 
     if (!reportCard) {
@@ -884,6 +927,7 @@ async function handleRetrieveReport(event) {
     }
 
     console.debug('Retrieval succeeded: report card found', reportCard);
+    State.currentReportCardData = reportCard;
     renderReportCardToUI(reportCard);
   } catch (error) {
     console.error("Retrieval error:", error, error?.message, error?.details || error?.hint || error?.code);
