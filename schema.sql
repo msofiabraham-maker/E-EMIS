@@ -281,8 +281,9 @@ CREATE POLICY "Allow authenticated admin delete schools" ON schools
 
 -- Learners Table Policies
 DROP POLICY IF EXISTS "Allow authenticated admin select learners" ON learners;
-CREATE POLICY "Allow authenticated admin select learners" ON learners
-    FOR SELECT USING (auth.role() = 'authenticated');
+DROP POLICY IF EXISTS "Allow public select learners" ON learners;
+CREATE POLICY "Allow public select learners" ON learners
+    FOR SELECT USING (true);
 DROP POLICY IF EXISTS "Allow authenticated admin insert learners" ON learners;
 CREATE POLICY "Allow authenticated admin insert learners" ON learners
     FOR INSERT WITH CHECK (auth.role() = 'authenticated');
@@ -295,8 +296,9 @@ CREATE POLICY "Allow authenticated admin delete learners" ON learners
 
 -- Results Table Policies
 DROP POLICY IF EXISTS "Allow authenticated admin select results" ON results;
-CREATE POLICY "Allow authenticated admin select results" ON results
-    FOR SELECT USING (auth.role() = 'authenticated');
+DROP POLICY IF EXISTS "Allow public select results" ON results;
+CREATE POLICY "Allow public select results" ON results
+    FOR SELECT USING (true);
 DROP POLICY IF EXISTS "Allow authenticated admin insert results" ON results;
 CREATE POLICY "Allow authenticated admin insert results" ON results
     FOR INSERT WITH CHECK (auth.role() = 'authenticated');
@@ -308,8 +310,9 @@ CREATE POLICY "Allow authenticated admin delete results" ON results
     FOR DELETE USING (auth.role() = 'authenticated');
 
 -- Result Subjects Table Policies
-DROP POLICY IF EXISTS "Allow authenticated admin select result_subjects" ON result_subjects;
-CREATE POLICY "Allow authenticated admin select result_subjects" ON result_subjects
+DROP POLICY IF EXISTS "Allow public select result_subjects" ON result_subjects;
+CREATE POLICY "Allow public select result_subjects" ON result_subjects
+    FOR SELECT USING (trueult_subjects" ON result_subjects
     FOR SELECT USING (auth.role() = 'authenticated');
 DROP POLICY IF EXISTS "Allow authenticated admin insert result_subjects" ON result_subjects;
 CREATE POLICY "Allow authenticated admin insert result_subjects" ON result_subjects
